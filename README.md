@@ -9,26 +9,96 @@ A Swift library for building local MCP (Model Context Protocol) servers.
 dependencies: [
     .package(url: "https://github.com/bmdragos/swift-mcp-server", branch: "main"),
 ]
+
+// Target using the macro (recommended)
+.target(name: "MyServer", dependencies: [
+    .product(name: "MCPServerMacros", package: "swift-mcp-server"),
+])
+
+// Or just the core library
+.target(name: "MyServer", dependencies: [
+    .product(name: "MCPServer", package: "swift-mcp-server"),
+])
 ```
 
-## Quick Start
+## Quick Start with @MCPTool Macro
+
+The `@MCPTool` macro eliminates boilerplate - just write a `run()` function:
+
+```swift
+import MCPServerMacros
+
+@MCPTool("greet", "Greet someone by name")
+struct GreetTool {
+    func run(name: String, enthusiastic: Bool = false, context: NoContext) async throws -> String {
+        let greeting = "Hello, \(name)!"
+        return enthusiastic ? greeting.uppercased() : greeting
+    }
+}
+
+// That's it! The macro generates:
+// - name, description properties
+// - inputSchema from parameter types
+// - execute() wrapper that unpacks arguments and calls run()
+
+let server = MCPServer(info: ServerInfo(name: "my-server", version: "1.0.0"))
+await server.register(GreetTool())
+await server.run()
+```
+
+### Supported Parameter Types
+
+| Swift Type | JSON Schema | Notes |
+|------------|-------------|-------|
+| `String` | `string` | |
+| `Int` | `integer` | With optional min/max |
+| `Double` | `number` | |
+| `Bool` | `boolean` | |
+| `Date` | `string` | ISO8601 format |
+| `[T]` | `array` | Array of any supported type |
+| `T?` | (not required) | Optional parameters |
+| `T = value` | (not required) | Parameters with defaults |
+| `MyEnum` | `string` with `enum` | Requires `CaseIterable` |
+
+### Enums
+
+String enums automatically generate allowed values in the schema:
+
+```swift
+enum Priority: String, CaseIterable {
+    case low, medium, high
+}
+
+@MCPTool("create_task", "Create a task")
+struct CreateTaskTool {
+    func run(title: String, priority: Priority = .medium, context: NoContext) async throws -> String {
+        "Created '\(title)' with \(priority.rawValue) priority"
+    }
+}
+// Schema: { "priority": { "type": "string", "enum": ["low", "medium", "high"] } }
+```
+
+## Manual Tool Definition
+
+For full control, implement the `Tool` protocol directly:
 
 ```swift
 import MCPServer
 
-// 1. Define a tool
 struct GreetTool: Tool {
     typealias Context = NoContext
 
     let name = "greet"
     let description = "Greet someone by name"
 
-    let inputSchema = Schema.object(
-        properties: [
-            "name": Schema.string(description: "Name to greet"),
-        ],
-        required: ["name"]
-    )
+    var inputSchema: JSONValue {
+        Schema.object(
+            properties: [
+                "name": Schema.string(description: "Name to greet"),
+            ],
+            required: ["name"]
+        )
+    }
 
     func execute(arguments: [String: JSONValue], context: NoContext) async throws -> String {
         guard let name = arguments["name"]?.stringValue else {
@@ -37,11 +107,6 @@ struct GreetTool: Tool {
         return "Hello, \(name)!"
     }
 }
-
-// 2. Create and run server
-let server = MCPServer(info: ServerInfo(name: "my-server", version: "1.0.0"))
-await server.register(GreetTool())
-await server.run()
 ```
 
 ## Using Context for Shared State
@@ -79,19 +144,46 @@ await server.register(CounterTool())
 await server.run()
 ```
 
+## Schema Validation
+
+Arguments are automatically validated against the tool's schema before execution:
+
+- Required fields must be present
+- Types must match (string, integer, number, boolean, array)
+- Numeric bounds are enforced (`minimum`, `maximum`)
+- Enum values are validated
+
+```swift
+// This tool requires count to be between 1-100
+var inputSchema: JSONValue {
+    Schema.object(
+        properties: [
+            "count": Schema.integer(minimum: 1, maximum: 100),
+        ],
+        required: ["count"]
+    )
+}
+// Calling with count: 200 throws: "Value for 'count' must be <= 100"
+```
+
+To disable validation (if your tool handles it internally):
+```swift
+try await registry.call(name: "tool", arguments: args, context: ctx, validate: false)
+```
+
 ## Schema Helpers
 
-The `Schema` enum provides helpers for building JSON Schema input schemas:
+The `Schema` enum provides helpers for building JSON Schema:
 
 ```swift
 Schema.object(
     properties: [
         "name": Schema.string(description: "User name"),
-        "age": Schema.integer(description: "Age", minimum: 0, maximum: 150),
-        "score": Schema.number(description: "Score"),
-        "active": Schema.boolean(description: "Is active"),
-        "tags": Schema.array(items: Schema.string(), description: "Tags"),
-        "level": Schema.string(description: "Level", enum: ["low", "medium", "high"]),
+        "age": Schema.integer(minimum: 0, maximum: 150),
+        "score": Schema.number(),
+        "active": Schema.boolean(),
+        "tags": Schema.array(items: Schema.string()),
+        "level": Schema.string(enum: ["low", "medium", "high"]),
     ],
     required: ["name"]
 )
@@ -115,6 +207,12 @@ await server.register(from: MathTools())
 ```
 
 ## API Reference
+
+### Macro
+
+| Type | Description |
+|------|-------------|
+| `@MCPTool` | Generates Tool conformance from a `run()` function |
 
 ### Core Types
 
@@ -143,6 +241,7 @@ await server.register(from: MathTools())
 | `ToolError` | Error type for tool failures |
 | `ToolProvider` | Protocol for grouping tools |
 | `Schema` | Helpers for building JSON schemas |
+| `SchemaValidator` | Validates arguments against schemas |
 
 ## License
 

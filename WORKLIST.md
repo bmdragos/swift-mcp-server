@@ -2,19 +2,58 @@
 
 ## Current Focus
 
-### v1.0 Release
+### v1.0 Release ✅
 - [x] Tag v1.0.0 release
-- [ ] Migrate serial-mcp to use library (dogfooding)
-  - [ ] Replace JSONValue with library version
-  - [ ] Replace JSONRPC types with library version
-  - [ ] Replace Tool/ToolRegistry with library version
-  - [ ] Replace MCPServer with library version
-  - [ ] Update Package.swift to depend on swift-mcp-server
-  - [ ] Run tests, verify everything works
-  - [ ] Document any API gaps discovered
+- [x] Migrate serial-mcp to use library (dogfooding)
+  - [x] Replace JSONValue with library version
+  - [x] Replace JSONRPC types with library version
+  - [x] Replace Tool/ToolRegistry with library version
+  - [x] Replace MCPServer with library version
+  - [x] Update Package.swift to depend on swift-mcp-server
+  - [x] Run tests, verify everything works
+  - [x] Document any API gaps discovered
 
-### Future (post-dogfooding)
-- [ ] Swift Macros for @MCPTool (if boilerplate is painful)
+#### Migration Notes (serial-mcp)
+Changes required during migration:
+- `inputSchema` return type: library uses `JSONValue`, not `[String: JSONValue]`
+- `Schema.int()` → `Schema.integer()`
+- `Schema.bool()` → `Schema.boolean()`
+- Tools need explicit `typealias Context = YourContext`
+- Context must conform to `Sendable` (actors work well)
+- MCPServer init requires `ServerInfo` and `context` parameters
+
+Lines of code removed: ~400 (MCP boilerplate)
+Lines of code changed: ~20 (API adjustments)
+Migration time: ~10 minutes
+
+### v1.0.1 - Developer Experience
+- [x] Schema aliases for migration ergonomics
+  - [x] `Schema.int()` alias for `Schema.integer()`
+  - [x] `Schema.bool()` alias for `Schema.boolean()`
+  - [x] Add tests for aliases (122 tests total now)
+- [x] Swift Macros for @MCPTool
+  - [x] Design macro API (user writes `run()`, macro generates `execute()`)
+  - [x] Implement macro package (MCPServerMacros, MCPServerMacrosImpl)
+  - [x] Auto-generate name, description, inputSchema from function signature
+  - [x] Add tests (9 tests for macro functionality, 131 total)
+
+### v1.0.2 - Robustness ✅
+- [x] Schema validation in ToolRegistry
+  - [x] Validate required fields present
+  - [x] Validate types match schema (string, integer, number, boolean, array)
+  - [x] Validate numeric bounds (minimum/maximum)
+  - [x] Validate string enums
+  - [x] Add validation tests (17 tests)
+- [x] Extended macro type support
+  - [x] Optional types (String?) → not required in schema
+  - [x] String enums (CaseIterable) → Schema.string(enum: [...])
+  - [x] Add macro tests (21 tests total)
+
+### v1.0.3 - Type Enhancements ✅
+- [x] Date → Schema.string(description: "ISO8601 date string")
+- [x] Enum default value handling (uses actual default from function signature)
+
+### Future
 - [ ] Resources support (if needed)
 - [ ] Migrate corebluetooth-mcp
 - [ ] Migrate xclaude (major undertaking)
@@ -103,3 +142,12 @@
 - [x] CreateMCP scaffolding tool
 - [x] GitHub repo (bmdragos/swift-mcp-server)
 - [x] Added to Claude Code config
+- [x] v1.0.0 tagged and released
+- [x] serial-mcp migrated to use library (first consumer!)
+- [x] Schema aliases (int/bool) for migration ergonomics
+- [x] @MCPTool macro for reduced boilerplate
+- [x] Schema validation before tool execution (types, bounds, enums)
+- [x] Optional type support in macro (T? → not required)
+- [x] String enum support in macro (CaseIterable → enum values in schema)
+- [x] Date type support in macro (ISO8601 parsing)
+- [x] Enum default value handling (preserves actual defaults)

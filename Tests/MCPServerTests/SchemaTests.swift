@@ -266,6 +266,45 @@ struct SchemaTests {
         }
     }
 
+    // MARK: - Schema Aliases
+
+    @Suite("Schema Aliases")
+    struct AliasTests {
+
+        @Test("int() is alias for integer()")
+        func intAlias() {
+            let intSchema = Schema.int(description: "Count", minimum: 0, maximum: 100)
+            let integerSchema = Schema.integer(description: "Count", minimum: 0, maximum: 100)
+
+            #expect(intSchema["type"]?.stringValue == "integer")
+            #expect(intSchema["description"]?.stringValue == integerSchema["description"]?.stringValue)
+            #expect(intSchema["minimum"]?.intValue == integerSchema["minimum"]?.intValue)
+            #expect(intSchema["maximum"]?.intValue == integerSchema["maximum"]?.intValue)
+        }
+
+        @Test("bool() is alias for boolean()")
+        func boolAlias() {
+            let boolSchema = Schema.bool(description: "Is enabled")
+            let booleanSchema = Schema.boolean(description: "Is enabled")
+
+            #expect(boolSchema["type"]?.stringValue == "boolean")
+            #expect(boolSchema["description"]?.stringValue == booleanSchema["description"]?.stringValue)
+        }
+
+        @Test("aliases work in object properties")
+        func aliasesInObject() {
+            let schema = Schema.object(
+                properties: [
+                    "count": Schema.int(minimum: 0),
+                    "enabled": Schema.bool()
+                ]
+            )
+
+            #expect(schema["properties"]?["count"]?["type"]?.stringValue == "integer")
+            #expect(schema["properties"]?["enabled"]?["type"]?.stringValue == "boolean")
+        }
+    }
+
     // MARK: - Complex Schemas
 
     @Suite("Complex Schemas")

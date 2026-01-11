@@ -72,15 +72,156 @@ public actor ToolRegistry<Context: Sendable> {
     }
 
     /// Call a tool by name with the given arguments.
+    ///
+    /// Validates arguments against the tool's schema before execution.
     public func call(
         name: String,
         arguments: [String: JSONValue],
-        context: Context
+        context: Context,
+        validate: Bool = true
     ) async throws -> String {
         guard let tool = tools[name] else {
             throw ToolError("Unknown tool: \(name)")
         }
+
+        if validate {
+            try SchemaValidator.validate(arguments: arguments, against: tool.inputSchema)
+        }
+
         return try await tool.execute(arguments: arguments, context: context)
+    }
+}
+
+// MARK: - Schema Validator
+
+/// Validates arguments against a JSON Schema.
+public enum SchemaValidator {
+
+    /// Validate arguments against a schema.
+    /// Throws `ToolError` if validation fails.
+    public static func validate(arguments: [String: JSONValue], against schema: JSONValue) throws {
+        // Get schema type - must be object for tool inputs
+        guard schema["type"]?.stringValue == "object" else {
+            return // Can't validate non-object schemas
+        }
+
+        // Check required fields
+        if let requiredArray = schema["required"]?.arrayValue {
+            let requiredFields = requiredArray.compactMap { $0.stringValue }
+            for field in requiredFields {
+                if arguments[field] == nil {
+                    throw ToolError("Missing required argument: \(field)")
+                }
+            }
+        }
+
+        // Get properties schema
+        guard let properties = schema["properties"]?.objectValue else {
+            return // No properties to validate
+        }
+
+        // Validate each provided argument against its schema
+        for (key, value) in arguments {
+            guard let propSchema = properties[key] else {
+                continue // Extra arguments are allowed
+            }
+
+            try validateValue(value, against: propSchema, path: key)
+        }
+    }
+
+    private static func validateValue(_ value: JSONValue, against schema: JSONValue, path: String) throws {
+        guard let expectedType = schema["type"]?.stringValue else {
+            return // No type constraint
+        }
+
+        let actualType = jsonValueType(value)
+
+        // Check type match (with numeric coercion)
+        switch expectedType {
+        case "string":
+            guard case .string = value else {
+                throw ToolError("Invalid type for '\(path)': expected string, got \(actualType)")
+            }
+            // Check enum constraint
+            if let enumValues = schema["enum"]?.arrayValue {
+                let allowed = enumValues.compactMap { $0.stringValue }
+                if let strValue = value.stringValue, !allowed.contains(strValue) {
+                    throw ToolError("Invalid value for '\(path)': must be one of \(allowed.joined(separator: ", "))")
+                }
+            }
+
+        case "integer":
+            // Accept both int and double that are whole numbers
+            switch value {
+            case .int(let n):
+                try validateNumericBounds(Double(n), schema: schema, path: path)
+            case .double(let n) where n.truncatingRemainder(dividingBy: 1) == 0:
+                try validateNumericBounds(n, schema: schema, path: path)
+            default:
+                throw ToolError("Invalid type for '\(path)': expected integer, got \(actualType)")
+            }
+
+        case "number":
+            // Accept both int and double
+            switch value {
+            case .int(let n):
+                try validateNumericBounds(Double(n), schema: schema, path: path)
+            case .double(let n):
+                try validateNumericBounds(n, schema: schema, path: path)
+            default:
+                throw ToolError("Invalid type for '\(path)': expected number, got \(actualType)")
+            }
+
+        case "boolean":
+            guard case .bool = value else {
+                throw ToolError("Invalid type for '\(path)': expected boolean, got \(actualType)")
+            }
+
+        case "array":
+            guard case .array(let items) = value else {
+                throw ToolError("Invalid type for '\(path)': expected array, got \(actualType)")
+            }
+            // Validate array items if schema specifies
+            if let itemSchema = schema["items"] {
+                for (index, item) in items.enumerated() {
+                    try validateValue(item, against: itemSchema, path: "\(path)[\(index)]")
+                }
+            }
+
+        case "object":
+            guard case .object = value else {
+                throw ToolError("Invalid type for '\(path)': expected object, got \(actualType)")
+            }
+
+        default:
+            break // Unknown type, skip validation
+        }
+    }
+
+    private static func validateNumericBounds(_ value: Double, schema: JSONValue, path: String) throws {
+        if let min = schema["minimum"]?.doubleValue ?? schema["minimum"]?.intValue.map(Double.init) {
+            if value < min {
+                throw ToolError("Value for '\(path)' must be >= \(min)")
+            }
+        }
+        if let max = schema["maximum"]?.doubleValue ?? schema["maximum"]?.intValue.map(Double.init) {
+            if value > max {
+                throw ToolError("Value for '\(path)' must be <= \(max)")
+            }
+        }
+    }
+
+    private static func jsonValueType(_ value: JSONValue) -> String {
+        switch value {
+        case .null: return "null"
+        case .bool: return "boolean"
+        case .int: return "integer"
+        case .double: return "number"
+        case .string: return "string"
+        case .array: return "array"
+        case .object: return "object"
+        }
     }
 }
 
@@ -124,6 +265,11 @@ public enum Schema {
         return .object(prop)
     }
 
+    /// Alias for `integer()` - convenient for migrations.
+    public static func int(description: String? = nil, minimum: Int? = nil, maximum: Int? = nil) -> JSONValue {
+        integer(description: description, minimum: minimum, maximum: maximum)
+    }
+
     /// Number property schema.
     public static func number(description: String? = nil, minimum: Double? = nil, maximum: Double? = nil) -> JSONValue {
         var prop: [String: JSONValue] = ["type": "number"]
@@ -138,6 +284,11 @@ public enum Schema {
         var prop: [String: JSONValue] = ["type": "boolean"]
         if let desc = description { prop["description"] = .string(desc) }
         return .object(prop)
+    }
+
+    /// Alias for `boolean()` - convenient for migrations.
+    public static func bool(description: String? = nil) -> JSONValue {
+        boolean(description: description)
     }
 
     /// Array property schema.

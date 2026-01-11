@@ -105,8 +105,8 @@ struct CreateMCPProjectTool: Tool {
             name: "\(name)",
             platforms: [.macOS(.v14)],
             dependencies: [
-                // Local path - update to GitHub URL once published:
-                // .package(url: "https://github.com/yourusername/swift-mcp-server", from: "1.0.0"),
+                // Using local path for development - switch to GitHub for release:
+                // .package(url: "https://github.com/bmdragos/swift-mcp-server", branch: "main"),
                 .package(path: "\(libraryPath)"),
             ],
             targets: [

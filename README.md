@@ -7,7 +7,7 @@ A Swift library for building local MCP (Model Context Protocol) servers.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/yourusername/swift-mcp-server", from: "1.0.0"),
+    .package(url: "https://github.com/bmdragos/swift-mcp-server", branch: "main"),
 ]
 ```
 

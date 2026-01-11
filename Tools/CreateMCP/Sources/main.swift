@@ -13,10 +13,11 @@ struct CreateMCPProjectTool: Tool {
         properties: [
             "name": Schema.string(description: "Project name (e.g., 'my-mcp-server')"),
             "path": Schema.string(description: "Parent directory to create project in (e.g., '/Users/bd/Coding')"),
-            "library_path": Schema.string(description: "Path to swift-mcp-server library (default: /Users/bd/Coding/swift-mcp-server)"),
             "tool_name": Schema.string(description: "Name of the initial example tool to create (e.g., 'hello')"),
             "tool_description": Schema.string(description: "Description of the initial tool"),
             "with_context": Schema.boolean(description: "Whether to include a context actor for shared state (default: false)"),
+            "use_macro": Schema.boolean(description: "Use @MCPTool macro for simpler syntax (default: true)"),
+            "local_library": Schema.string(description: "Use local library path instead of GitHub (for development)"),
         ],
         required: ["name", "path"]
     )
@@ -29,10 +30,11 @@ struct CreateMCPProjectTool: Tool {
             throw ToolError("Missing required argument: path")
         }
 
-        let libraryPath = arguments["library_path"]?.stringValue ?? "/Users/bd/Coding/swift-mcp-server"
+        let localLibrary = arguments["local_library"]?.stringValue
         let toolName = arguments["tool_name"]?.stringValue ?? "hello"
         let toolDescription = arguments["tool_description"]?.stringValue ?? "A sample tool"
         let withContext = arguments["with_context"]?.boolValue ?? false
+        let useMacro = arguments["use_macro"]?.boolValue ?? true
 
         let projectPath = (parentPath as NSString).appendingPathComponent(name)
         let fm = FileManager.default
@@ -53,12 +55,13 @@ struct CreateMCPProjectTool: Tool {
         try fm.createDirectory(atPath: sourcesPath, withIntermediateDirectories: true)
 
         // Generate files
-        let packageSwift = generatePackageSwift(name: name, libraryPath: libraryPath)
+        let packageSwift = generatePackageSwift(name: name, localLibrary: localLibrary, useMacro: useMacro)
         let mainSwift = generateMainSwift(
             serverName: name,
             toolName: toolName,
             toolDescription: toolDescription,
-            withContext: withContext
+            withContext: withContext,
+            useMacro: useMacro
         )
 
         try packageSwift.write(
@@ -95,40 +98,137 @@ struct CreateMCPProjectTool: Tool {
             """
     }
 
-    private func generatePackageSwift(name: String, libraryPath: String) -> String {
-        """
-        // swift-tools-version: 6.0
+    private func generatePackageSwift(name: String, localLibrary: String?, useMacro: Bool) -> String {
+        let dependency: String
+        if let localPath = localLibrary {
+            dependency = ".package(path: \"\(localPath)\"),"
+        } else {
+            dependency = ".package(url: \"https://github.com/bmdragos/swift-mcp-server\", from: \"1.0.0\"),"
+        }
 
-        import PackageDescription
+        let product = useMacro ? "MCPServerMacros" : "MCPServer"
 
-        let package = Package(
-            name: "\(name)",
-            platforms: [.macOS(.v14)],
-            dependencies: [
-                // Using local path for development - switch to GitHub for release:
-                // .package(url: "https://github.com/bmdragos/swift-mcp-server", branch: "main"),
-                .package(path: "\(libraryPath)"),
-            ],
-            targets: [
-                .executableTarget(
-                    name: "\(name)",
-                    dependencies: [
-                        .product(name: "MCPServer", package: "swift-mcp-server"),
-                    ]
-                ),
-            ]
-        )
-        """
+        return """
+            // swift-tools-version: 6.0
+
+            import PackageDescription
+
+            let package = Package(
+                name: "\(name)",
+                platforms: [.macOS(.v14)],
+                dependencies: [
+                    \(dependency)
+                ],
+                targets: [
+                    .executableTarget(
+                        name: "\(name)",
+                        dependencies: [
+                            .product(name: "\(product)", package: "swift-mcp-server"),
+                        ]
+                    ),
+                ]
+            )
+            """
     }
 
     private func generateMainSwift(
         serverName: String,
         toolName: String,
         toolDescription: String,
-        withContext: Bool
+        withContext: Bool,
+        useMacro: Bool
     ) -> String {
         let structName = toolName.capitalized.replacingOccurrences(of: "-", with: "") + "Tool"
 
+        if useMacro {
+            return generateMacroStyle(
+                serverName: serverName,
+                toolName: toolName,
+                toolDescription: toolDescription,
+                structName: structName,
+                withContext: withContext
+            )
+        } else {
+            return generateProtocolStyle(
+                serverName: serverName,
+                toolName: toolName,
+                toolDescription: toolDescription,
+                structName: structName,
+                withContext: withContext
+            )
+        }
+    }
+
+    private func generateMacroStyle(
+        serverName: String,
+        toolName: String,
+        toolDescription: String,
+        structName: String,
+        withContext: Bool
+    ) -> String {
+        if withContext {
+            return """
+                import MCPServerMacros
+
+                // MARK: - Context (shared state)
+
+                actor AppContext {
+                    // Add your shared state here
+                    // e.g., managers, connections, caches
+                }
+
+                // MARK: - Tools
+
+                @MCPTool("\(toolName)", "\(toolDescription)")
+                struct \(structName) {
+                    func run(message: String, context: AppContext) async throws -> String {
+                        // TODO: Implement your tool logic here
+                        return "Received: \\(message)"
+                    }
+                }
+
+                // MARK: - Server
+
+                let context = AppContext()
+                let server = MCPServer(
+                    info: ServerInfo(name: "\(serverName)", version: "1.0.0"),
+                    context: context
+                )
+
+                await server.register(\(structName)())
+                await server.run()
+                """
+        } else {
+            return """
+                import MCPServerMacros
+
+                // MARK: - Tools
+
+                @MCPTool("\(toolName)", "\(toolDescription)")
+                struct \(structName) {
+                    func run(message: String, context: NoContext) async throws -> String {
+                        // TODO: Implement your tool logic here
+                        return "Received: \\(message)"
+                    }
+                }
+
+                // MARK: - Server
+
+                let server = MCPServer(info: ServerInfo(name: "\(serverName)", version: "1.0.0"))
+
+                await server.register(\(structName)())
+                await server.run()
+                """
+        }
+    }
+
+    private func generateProtocolStyle(
+        serverName: String,
+        toolName: String,
+        toolDescription: String,
+        structName: String,
+        withContext: Bool
+    ) -> String {
         if withContext {
             return """
                 import MCPServer
@@ -238,19 +338,35 @@ struct ListTemplatesTool: Tool {
           - tool_name: Initial tool name (default: 'hello')
           - tool_description: Tool description (default: 'A sample tool')
           - with_context: Include context actor for shared state (default: false)
+          - use_macro: Use @MCPTool macro for simpler syntax (default: true)
+          - local_library: Use local library path instead of GitHub URL
 
         Examples:
 
-        1. Simple stateless server:
+        1. Simple server with @MCPTool macro (recommended):
            create_mcp_project(name: "echo-mcp", path: "/Users/bd/Coding")
 
-        2. Server with shared state (for managers, connections, etc.):
+        2. Server with shared state:
            create_mcp_project(
                name: "device-mcp",
                path: "/Users/bd/Coding",
                tool_name: "connect",
                tool_description: "Connect to a device",
                with_context: true
+           )
+
+        3. Manual Tool protocol (more control over schema):
+           create_mcp_project(
+               name: "advanced-mcp",
+               path: "/Users/bd/Coding",
+               use_macro: false
+           )
+
+        4. Development with local library:
+           create_mcp_project(
+               name: "dev-mcp",
+               path: "/Users/bd/Coding",
+               local_library: "/Users/bd/Coding/swift-mcp-server"
            )
         """
     }

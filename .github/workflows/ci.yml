@@ -9,12 +9,9 @@ on:
 jobs:
   test:
     name: Test (macOS)
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app
 
       - name: Show Swift version
         run: swift --version
@@ -27,12 +24,9 @@ jobs:
 
   build-examples:
     name: Build Examples
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app
 
       - name: Build EchoServer example
         run: |

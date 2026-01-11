@@ -1,6 +1,27 @@
 # swift-mcp-server Worklist
 
-## v1.0 - Core Library
+## Current Focus
+
+### v1.0 Release
+- [x] Tag v1.0.0 release
+- [ ] Migrate serial-mcp to use library (dogfooding)
+  - [ ] Replace JSONValue with library version
+  - [ ] Replace JSONRPC types with library version
+  - [ ] Replace Tool/ToolRegistry with library version
+  - [ ] Replace MCPServer with library version
+  - [ ] Update Package.swift to depend on swift-mcp-server
+  - [ ] Run tests, verify everything works
+  - [ ] Document any API gaps discovered
+
+### Future (post-dogfooding)
+- [ ] Swift Macros for @MCPTool (if boilerplate is painful)
+- [ ] Resources support (if needed)
+- [ ] Migrate corebluetooth-mcp
+- [ ] Migrate xclaude (major undertaking)
+
+---
+
+## v1.0 - Core Library (COMPLETE)
 
 ### Tests (robustnessmaxxxing) ✅
 - [x] JSONValue tests (119 tests total)

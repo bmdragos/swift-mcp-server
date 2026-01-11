@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test (macOS)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Build
+        run: swift build -v
+
+      - name: Run tests
+        run: swift test -v
+
+  build-examples:
+    name: Build Examples
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Build EchoServer example
+        run: |
+          cd Examples/EchoServer
+          swift build
+
+      - name: Build CreateMCP tool
+        run: |
+          cd Tools/CreateMCP
+          swift build

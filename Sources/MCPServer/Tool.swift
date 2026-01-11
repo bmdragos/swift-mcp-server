@@ -1,7 +1,7 @@
 import Foundation
 
 /// Errors that can be thrown by tool execution.
-public struct ToolError: Error, CustomStringConvertible {
+public struct ToolError: Error, LocalizedError, CustomStringConvertible {
     public let message: String
 
     public init(_ message: String) {
@@ -9,6 +9,7 @@ public struct ToolError: Error, CustomStringConvertible {
     }
 
     public var description: String { message }
+    public var errorDescription: String? { message }
 }
 
 /// A tool that can be invoked via MCP.
